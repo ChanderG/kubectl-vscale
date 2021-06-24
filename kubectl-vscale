@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# Input variables
+namespace=""
+
+# Intermediate variables
+workdir="/tmp/kubectl-vscale"
+node=""
+container_runtime=""
+containerid=""
+
+function usage_and_exit() {
+    cat <<EOF
+kubectl vscale - scale up/down CPU resources of a pod instantaneously
+
+Usage:
+      kubectl vscale [flags] <podname>
+
+Flags:
+      -h                          Print this help and exit
+      -n, --namespace             k8s namespace of the target pod
+      -c, --cpu                   New desired CPU value
+EOF
+    exit 0
+}
+
+function parse_arguments() {
+    while [ $# -gt 0 ]
+    do
+        case $1 in
+            -h)
+                usage_and_exit
+                ;;
+            -n|--namespace)
+                namespace=$2
+                shift
+                ;;
+            -c|--cpu)
+                cpu=$2
+                shift
+                ;;
+            *)
+                pod="$1"
+                ;;
+        esac
+        shift
+    done
+
+    if [ "$pod" == "" ]; then
+        echo "Pod name missing!!!"
+        echo ""
+        usage_and_exit
+    fi
+
+    if [ "$namespace" == "" ]; then
+        namespace="default"
+    fi
+}
+
+function setup_control_pod() {
+    # TODO: possibly make this a daemon set
+    cat << EOF > $workdir/vscale-controlpod-$node.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "vscale-controlpod-$node"
+spec:
+  hostPID: true
+  containers:
+  - name: controlpod
+    image: alpine
+    args:
+      - /bin/sh
+      - "-c"
+      - "tail -f /dev/null"
+    securityContext:
+      privileged: true
+  nodeName: $node
+EOF
+
+    # start the pod
+    # TODO: possibly provide option to force restart pod
+    kubectl apply -n $namespace -f $workdir/vscale-controlpod-$node.yaml
+    kubectl wait -n $namespace --for condition=ready pod vscale-controlpod-$node
+}
+
+function get_cgroup_path() {
+    # get pod yaml once - this is the only source for pod uid
+    pod_yaml=$(kubectl -n $namespace get pod $pod -o yaml)
+    uid=$(echo "$pod_yaml" | grep "uid:" | tail -n1 | awk '{print $2}')
+    containerid=$(echo "$pod_yaml" | grep "containerID:" | head -n1 | awk -F: '{print $3}' | awk -F/ '{print $3}')
+    qos_class=$(echo "$pod_yaml" | grep "qosClass:" | awk '{print $2}')
+
+    echo "Pod uid: $uid"
+    echo "Container id: $containerid"
+    echo "QoS Class: $qos_class"
+
+    cg_path="/sys/fs/cgroup/cpu/kubepods.slice/"
+    if [ $qos_class == "BestEffort" ]; then
+        cg_path+="kubepods-besteffort.slice/kubepods-besteffort-pod"
+    elif [ $qos_class == "Burstable" ]; then
+        cg_path+="kubepods-burstable.slice/kubepods-burstable-pod"
+    elif [ $qos_class == "Guaranteed" ]; then
+        cg_path+="kubepods-pos"
+    else
+        echo "Did not understand QoS class: $qos_class"
+    fi
+
+    # this part may not port as such
+    # replace "-" in the uid with "_"
+    uid_mod="${uid//-/_}"
+    cg_path+="$uid_mod.slice/"
+
+    # this most certainly is not generic
+    cg_path+="crio-$containerid.scope/"
+
+    # this bit should be ok
+    cg_path+="cpu.cfs_quota_us"
+}
+
+function main() {
+    parse_arguments "$@"
+
+    # setup workdir
+    mkdir -p -m 777 $workdir
+
+    # obtain node of the pod under target
+    node=$(kubectl -n $namespace get pod $pod -o jsonpath='{.spec.nodeName}')
+
+    if [ "$node" == "" ]; then
+        echo "Node was found to be empty. Refusing to continue."
+        exit
+    fi
+
+    # get controller running on this node, if not already running
+    setup_control_pod
+
+    # get cgroup path
+    get_cgroup_path
+
+    # convert cpu param into shares 
+    shares_raw=$(echo "$cpu*100000" | bc)
+    shares=${shares_raw%.*}
+
+    # update the cfs quota
+    cmd="echo $shares > $cg_path"
+    kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid bash -c \"$cmd\""
+
+    echo "Reprogrammed CPU usuage."
+}
+
+main "$@"
