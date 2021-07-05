@@ -20,6 +20,8 @@ Flags:
       -h                          Print this help and exit
       -n, --namespace             k8s namespace of the target pod
       -c, --cpu                   New desired CPU value
+      -r, --reset                 Reset to the value in the resource spec
+      -u, --unlimited             The sky is the limit!
 EOF
     exit 0
 }
@@ -38,6 +40,12 @@ function parse_arguments() {
             -c|--cpu)
                 cpu=$2
                 shift
+                ;;
+            -r|--reset)
+                reset=1
+                ;;
+            -u|--unlimited)
+                unlimited=1
                 ;;
             *)
                 pod="$1"
@@ -138,9 +146,25 @@ function main() {
     # get cgroup path
     get_cgroup_path
 
-    # convert cpu param into shares 
-    shares_raw=$(echo "$cpu*100000" | bc)
-    shares=${shares_raw%.*}
+    if [ "$reset" == "1" ]; then
+        cpu=$(kubectl -n $namespace get pod $pod -o jsonpath="{.spec.containers[0].resources.limits.cpu}")
+        echo "Reseting to pod default: $cpu"
+        if [ "$cpu" == "" ]; then
+            echo "No pod default limit found."
+            unlimited=1
+        fi
+    fi
+
+    if [ "$cpu" != "" ]; then
+        # convert cpu param into shares 
+        shares_raw=$(echo "$cpu*100000" | bc)
+        shares=${shares_raw%.*}
+    fi
+
+    if [ "$unlimited" == "1" ]; then
+        echo "Unlimited cpu requested..."
+        shares="-1"
+    fi
 
     # update the cfs quota
     cmd="echo $shares > $cg_path"

@@ -7,6 +7,8 @@ kubectl vscale -n <namespace> -c 2 <pod>
 ```
 limits <pod> CPU to 2 cores instantaneously - or a few seconds. Subsequent commands can increace/decrease this value in any order - the only assumption being that the amound being requested is less than the initial limit value specified in the pod yaml.
 
+You can use the `-u` flag to go unlimited and `-r` to reset to the pod default limits specified in the resource.
+
 ## Why?
 
 Normally scaling pods up/down requires a change of Deployment resource yaml that ends up destroying the running pod and creating a new one in its place. The best you can do is using rollout - even then a pod has to go away.
