@@ -95,35 +95,17 @@ EOF
 function get_cgroup_path() {
     # get pod yaml once - this is the only source for pod uid
     pod_yaml=$(kubectl -n $namespace get pod $pod -o yaml)
-    uid=$(echo "$pod_yaml" | grep "uid:" | tail -n1 | awk '{print $2}')
     containerid=$(echo "$pod_yaml" | grep "containerID:" | head -n1 | awk -F: '{print $3}' | awk -F/ '{print $3}')
-    qos_class=$(echo "$pod_yaml" | grep "qosClass:" | awk '{print $2}')
 
-    echo "Pod uid: $uid"
     echo "Container id: $containerid"
-    echo "QoS Class: $qos_class"
 
-    cg_path="/sys/fs/cgroup/cpu/kubepods.slice/"
-    if [ $qos_class == "BestEffort" ]; then
-        cg_path+="kubepods-besteffort.slice/kubepods-besteffort-pod"
-    elif [ $qos_class == "Burstable" ]; then
-        cg_path+="kubepods-burstable.slice/kubepods-burstable-pod"
-    elif [ $qos_class == "Guaranteed" ]; then
-        cg_path+="kubepods-pos"
-    else
-        echo "Did not understand QoS class: $qos_class"
-    fi
+    # this find may return multiple results
+    cmd="find -L /sys/fs/cgroup/cpu -regex \".*$containerid.*\/cpu.cfs_quota_us\""
+    cg_paths=$(kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid bash -c \"$cmd\"")
 
-    # this part may not port as such
-    # replace "-" in the uid with "_"
-    uid_mod="${uid//-/_}"
-    cg_path+="$uid_mod.slice/"
-
-    # this most certainly is not generic
-    cg_path+="crio-$containerid.scope/"
-
-    # this bit should be ok
-    cg_path+="cpu.cfs_quota_us"
+    # Pick the shortest path that matches
+    cg_path=$(echo "$cg_paths" | awk '{print length(), $0}' | sort -n | head -n1 | awk '{print $2}')
+    echo "Chosen cgroup path: $cg_path"
 }
 
 function main() {
