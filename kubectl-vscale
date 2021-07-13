@@ -89,6 +89,10 @@ EOF
     # start the pod
     # TODO: possibly provide option to force restart pod
     kubectl apply -n $namespace -f $workdir/vscale-controlpod-$node.yaml
+    if [ "$?" == "1" ]; then
+       echo "Error in apply kubectl resources..."
+       exit 1
+    fi
     kubectl wait -n $namespace --for condition=ready pod vscale-controlpod-$node
 }
 
@@ -119,7 +123,7 @@ function main() {
 
     if [ "$node" == "" ]; then
         echo "Node was found to be empty. Refusing to continue."
-        exit
+        exit 1
     fi
 
     # get controller running on this node, if not already running
