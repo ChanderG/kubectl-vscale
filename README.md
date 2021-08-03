@@ -9,6 +9,10 @@ limits <pod> CPU to 2 cores instantaneously - or a few seconds. Subsequent comma
 
 You can use the `-u` flag to go unlimited and `-r` to reset to the pod default limits specified in the resource.
 
+## Install
+
+Drop the `kubectl-vscale` script into $PATH, for example in `/usr/local/bin/`.
+
 ## Why?
 
 Normally scaling pods up/down requires a change of Deployment resource yaml that ends up destroying the running pod and creating a new one in its place. The best you can do is using rollout - even then a pod has to go away.
@@ -26,3 +30,7 @@ Great for research and experiments though!!
 The gist of the matter is that we use a privileged pod on the same node as the pod, nsenter into the host namespace and edit the host `/sys/fs/cgroup` hierarchy directly at the correct leaf node that represents the primary container in the target pod.
 
 More details can be found by perusing the code.
+
+## License
+
+MIT
