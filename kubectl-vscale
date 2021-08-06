@@ -104,7 +104,7 @@ function get_cgroup_path() {
     echo "Container id: $containerid"
 
     # this find may return multiple results
-    cmd="find -L /sys/fs/cgroup/cpu -regex \".*$containerid.*\/cpu.cfs_quota_us\""
+    cmd="find -L /sys/fs/cgroup/cpu -regex \".*kube.*$containerid.*\/cpu.cfs_quota_us\""
     cg_paths=$(kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid bash -c \"$cmd\"")
 
     # Pick the shortest path that matches
