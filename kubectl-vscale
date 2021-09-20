@@ -8,13 +8,14 @@ workdir="/tmp/kubectl-vscale"
 node=""
 container_runtime=""
 containerid=""
+label=""
 
 function usage_and_exit() {
     cat <<EOF
 kubectl vscale - scale up/down CPU resources of a pod instantaneously
 
 Usage:
-      kubectl vscale [flags] <podname>
+      kubectl vscale [flags] <podname|label>
 
 Flags:
       -h                          Print this help and exit
@@ -22,6 +23,7 @@ Flags:
       -c, --cpu                   New desired CPU value
       -r, --reset                 Reset to the value in the resource spec
       -u, --unlimited             The sky is the limit!
+      -l, --label                 Consider the podname as a label to search for
 EOF
     exit 0
 }
@@ -46,6 +48,9 @@ function parse_arguments() {
                 ;;
             -u|--unlimited)
                 unlimited=1
+                ;;
+            -l|--label)
+                label=1
                 ;;
             *)
                 pod="$1"
@@ -117,6 +122,13 @@ function main() {
 
     # setup workdir
     mkdir -p -m 777 $workdir
+
+    # lookup pod name if in label mode
+    if [ "$label" == "1" ]; then
+        labelval="$pod"
+        pod=$(kubectl -n $namespace get pod -l $labelval | tail -n1 | awk '{print $1}')
+        echo "Using label $labelval, looked up pod: $pod"
+    fi
 
     # obtain node of the pod under target
     node=$(kubectl -n $namespace get pod $pod -o jsonpath='{.spec.nodeName}')
