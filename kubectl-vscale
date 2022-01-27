@@ -9,6 +9,7 @@ node=""
 container_runtime=""
 containerid=""
 label=""
+image="alpine:latest"
 
 function usage_and_exit() {
     cat <<EOF
@@ -24,6 +25,7 @@ Flags:
       -r, --reset                 Reset to the value in the resource spec
       -u, --unlimited             The sky is the limit!
       -l, --label                 Consider the podname as a label to search for
+      -I, --image                 Override image to use as control pod, defaults to "alpine:latest"
 EOF
     exit 0
 }
@@ -51,6 +53,10 @@ function parse_arguments() {
                 ;;
             -l|--label)
                 label=1
+                ;;
+            -I|--image)
+                image=$2
+                shift
                 ;;
             *)
                 pod="$1"
@@ -81,7 +87,7 @@ spec:
   hostPID: true
   containers:
   - name: controlpod
-    image: alpine
+    image: $image
     args:
       - /bin/sh
       - "-c"
@@ -137,6 +143,8 @@ function main() {
         echo "Node was found to be empty. Refusing to continue."
         exit 1
     fi
+
+    echo "Using control pod image: $image"
 
     # get controller running on this node, if not already running
     setup_control_pod
