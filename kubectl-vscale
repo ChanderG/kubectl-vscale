@@ -110,7 +110,7 @@ function get_cgroup_path() {
 
     # this find may return multiple results
     cmd="find -L /sys/fs/cgroup/cpu -regex \".*kube.*$containerid.*\/cpu.cfs_quota_us\""
-    cg_paths=$(kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid bash -c \"$cmd\"")
+    cg_paths=$(kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid -- bash -c \"$cmd\"")
 
     # Pick the shortest path that matches
     cg_path=$(echo "$cg_paths" | awk '{print length(), $0}' | sort -n | head -n1 | awk '{print $2}')
@@ -166,7 +166,7 @@ function main() {
 
     # update the cfs quota
     cmd="echo $shares > $cg_path"
-    kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid bash -c \"$cmd\""
+    kubectl -n $namespace exec vscale-controlpod-$node -- sh -c "nsenter --target 1 --mount --pid -- bash -c \"$cmd\""
 
     echo "Reprogrammed CPU usuage."
 }
